@@ -1,0 +1,415 @@
+#!/usr/bin/env bash
+
+# Name:         vpnmgr
+# Description:  Create and delete OpenVPN client configurations
+# OS:           CentOS 7
+# Autor:        <Dmitry V.> dmitry.vlasov@fastmail.com
+
+function usage() {
+    echo "Usage: vpnmgr command [options] 
+   
+Commands:
+    create       Create the client configuration
+    delete       Delete the client configuration
+    status       Show existing configurations and their status
+    help         Show this message
+
+Options:
+    vpnmgr (create|delete) name
+        name     Client configuration name
+    
+    vpnmgr status [name]
+        name     Client configuration name (if empty, show a list of configurations)"
+}
+
+
+function root_check() {
+    if [[ $EUID -ne 0 ]]; then
+       echo "This script must be run as root" 
+       exit 1
+    fi
+}
+
+function openvpn_check() {
+    if ! [ -f "/etc/openvpn/server/check" ]; then
+        echo "OpenVPN is not deployed. Use the deploy_vpnmgr.sh"
+        exit 1
+    fi
+}
+
+function printTable() {
+    local -r mode=${1}
+    shift 1
+    
+    local input=""
+    while [ $# -gt 0 ]; do
+        if [[ "${2}" == "" || "${1}" == *"\n" ]]; then
+            input+="${1}"
+        else
+            input+="${1},"
+        fi
+        shift 1
+    done
+    
+    local -r delimiter=","
+    local -r input=$input
+    local -r data="$(removeEmptyLines "$input")"
+    
+    if [[ "${delimiter}" != '' && "$(isEmptyString "${data}")" = 'false' ]]; then
+        local -r numberOfLines="$(wc -l <<< "${data}")"
+        if [[ "${numberOfLines}" -gt '0' ]]; then
+            local table=''
+            local i=1
+            
+            for ((i = 1; i <= "${numberOfLines}"; i = i + 1)); do
+                local line=''
+                line="$(sed "${i}q;d" <<< "${data}")"
+                local numberOfColumns='0'
+                numberOfColumns="$(awk -F "${delimiter}" '{print NF}' <<< "${line}")"
+                
+                if [ "$mode" == "1" ]; then
+                    if [[ "${i}" -eq '1' ]]; then
+                        table="${table}$(printf '%s+' "$(repeatString '+#' "${numberOfColumns}")")"
+                    fi
+                elif [ "$mode" == "2" ]; then
+                    table="${table}$(printf '%s+' "$(repeatString '+#' "${numberOfColumns}")")"
+                else
+                    exit 1;
+                fi
+                
+                table="${table}\n"
+                local j=1
+                for ((j = 1; j <= "${numberOfColumns}"; j = j + 1)); do
+                    if [ "$j" == "1" ]; then
+                        table="${table}$(printf '| %s' "$(cut -d "${delimiter}" -f "${j}" <<< "${line}")")"
+                    else
+                        table="${table}$(printf '#| %s' "$(cut -d "${delimiter}" -f "${j}" <<< "${line}")")"
+                    fi
+                done
+                
+                table="${table}#|\n"
+                if [ "$mode" == "1" ]; then
+                    if [[ "${i}" -eq '1' ]] || [[ "${numberOfLines}" -gt '1' && "${i}" -eq "${numberOfLines}" ]]; then
+                        table="${table}$(printf '%s+' "$(repeatString '+#' "${numberOfColumns}")")"
+                    fi
+                elif [ "$mode" == "2" ]; then
+                    if [[ "${numberOfLines}" -gt '1' && "${i}" -eq "${numberOfLines}" ]]; then
+                        table="${table}$(printf '%s+' "$(repeatString '+#' "${numberOfColumns}")")"
+                    fi
+                else
+                    exit 1;
+                fi
+            done
+            
+            if [[ "$(isEmptyString "${table}")" = 'false' ]]; then
+                echo -e "${table}" | column -s '#' -t | awk '/^\+/{gsub(" ", "-", $0)}1'
+            fi
+        fi
+    fi
+}
+
+function removeEmptyLines() {
+    local -r content="${1}"
+    echo -e "${content}" | sed '/^\s*$/d'
+}
+
+function repeatString() {
+    local -r string="${1}"
+    local -r numberToRepeat="${2}"
+    
+    if [[ "${string}" != '' && "${numberToRepeat}" =~ ^[1-9][0-9]*$ ]]; then
+        local -r result="$(printf "%${numberToRepeat}s")"
+        echo -e "${result// /${string}}"
+    fi
+}
+
+function isEmptyString() {
+    local -r string="${1}"
+    if [[ "$(trimString "${string}")" = '' ]]; then
+        echo 'true' && return 0
+    fi
+    echo 'false' && return 1
+}
+
+function trimString() {
+    local -r string="${1}"
+    sed 's,^[[:blank:]]*,,' <<< "${string}" | sed 's,[[:blank:]]*$,,'
+}
+
+function create() {
+    client_config="/etc/openvpn/clients/$name.ovpn"
+    ca_crt="/etc/openvpn/ca/pki/ca.crt"
+    client_key="/etc/openvpn/pki/pki/private/$name.key"
+    client_crt="/etc/openvpn/ca/pki/issued/$name.crt"
+    ta="/etc/openvpn/server/ta.key"
+
+    if [ -f $client_config ]; then
+        echo "Client configuration already exist"
+        exit 1
+    fi
+    
+    cd /etc/openvpn/pki
+    ./easyrsa gen-req $name
+    if ! [ -f "/etc/openvpn/pki/pki/reqs/$name.req" ]; then
+        echo "Unexpected error creating request by PKI"
+        exit 1
+    fi
+    
+    cd /etc/openvpn/ca
+    ./easyrsa import-req /etc/openvpn/pki/pki/reqs/$name.req $name
+    if ! [ -f "/etc/openvpn/ca/pki/reqs/$name.req" ]; then
+        echo "Unexpected error importing request to the CA"
+        exit 1
+    fi
+    ./easyrsa sign-req client $name
+    if ! [ -f $client_crt ]; then
+        echo "Unexpected error signing certificate by CA"
+        exit 1
+    fi
+
+    cat /etc/openvpn/client/base_configuration.conf \
+        <(echo -e '<ca>') \
+        $ca_crt \
+        <(echo -e '</ca>\n<cert>') \
+        $client_crt \
+        <(echo -e '</cert>\n<key>') \
+        $client_key \
+        <(echo -e '</key>\n<tls-crypt>') \
+        $ta \
+        <(echo -e '</tls-crypt>') \
+        > $client_config
+
+    if ! [ -f $client_config ]; then
+        echo "Unexpected error creating client configuration"
+        exit 1
+    fi
+    chown openvpn:openvpn $client_config
+    echo "$name,Down" >> /etc/openvpn/client/clients.db
+    echo "Config $name created in /etc/openvpn/clients"
+}
+
+function delete() {
+    if [ -f "/etc/openvpn/ca/pki/reqs/$name.req" ] || [ -f "/etc/openvpn/ca/pki/issued/$name.crt" ]; then
+        cd /etc/openvpn/ca
+        ./easyrsa revoke $name
+        ./easyrsa gen-crl
+        systemctl restart openvpn@server
+    fi
+    
+    if ! [ -f "/etc/openvpn/clients/$name.ovpn" ]; then
+        echo "Client configuration does not exist"
+        exit 1
+    fi
+    rm /etc/openvpn/clients/$name.ovpn
+    cp /etc/openvpn/ca/pki/crl.pem /etc/openvpn/server/
+    sed -i "/^$name,/d" /etc/openvpn/client/ipp.txt
+    sed -i "/^$name,/d" /etc/openvpn/client/clients.db
+    echo "Configuration $name has been deleted"
+}
+
+function status() {
+    client_db="Workspace/clients.db"
+    openvpn_status="Workspace/openvpn-status.log"
+    
+    if [ "$mode" == "detailed" ]; then
+        declare -a column0
+        declare -a column1
+        
+        IFS=',' read -ra updated <<< $(cat $openvpn_status | grep "^Updated,")
+        cl_name=$(cat $client_db | grep "^$name,")
+        if [ "$cl_name" == "" ]; then
+            echo "Configuration not found"
+            exit 1;
+        fi
+
+        
+        IFS=',' read -ra client_name_temp <<< $cl_name
+        column1[0]=${client_name_temp[0]}
+        column1[7]="${client_name_temp[1]}"
+        cl_name=${client_name_temp[0]}
+        
+        client_list=$(cat $openvpn_status | grep "^$cl_name,")
+        IFS=',' read -ra client_list <<< $client_list
+        
+        routing_table=$(cat $openvpn_status | grep --line-buffered --initial-tab ",$cl_name,")
+        count=1
+        for line in $routing_table; do
+            count="$(($count + 1))"
+            if [ "$count" == "7" ]; then
+                routing_table_ipv6=$line
+            fi
+        done
+        IFS="," read -ra routing_table_ipv6 <<< $routing_table_ipv6
+        IFS=',' read -ra routing_table <<< $routing_table
+        
+        if [ "$client_list" == "" ]; then
+            column1[1]="-"
+            column1[2]="-"
+            column1[3]="-"
+            column1[4]="-"
+            column1[5]="-"
+            column1[6]="-"
+        else
+            column1[1]="${routing_table[0]}"
+            real_address_temp=${client_list[1]}
+            IFS=':' read -ra real_address_temp <<< $real_address_temp
+            column1[2]="${real_address_temp[0]}"
+            column1[3]="${client_list[2]}"
+            column1[4]="${client_list[3]}"
+            column1[5]="${client_list[4]}"
+            column1[6]="${routing_table[3]}"
+        fi
+        
+        if ! [ "${column1[4]}" == "-" ]; then
+            column1[4]="$(awk "BEGIN {print ${column1[4]}/1024/1024}") MB"
+            column1[3]="$(awk "BEGIN {print ${column1[3]}/1024/1024}") MB"
+        fi
+        
+        if ! [ "${routing_table_ipv6[0]}" == "" ]; then
+            printTable "1"  "Name"                   "${column1[0]}\n" \
+                            "Virtual Address"        "${routing_table_ipv6[0]}\n" \
+                            ""                       "${column1[1]}\n" \
+                            "Real Address"           "${column1[2]}\n" \
+                            "Received"               "${column1[3]}\n" \
+                            "Sent"                   "${column1[4]}\n" \
+                            "Connected Since"        "${column1[5]}\n" \
+                            "Last Ref"               "${column1[6]}\n" \
+                            "Status Updated"         "${updated[1]}\n" \
+                            "Status"                 "${column1[7]}"
+        else
+            printTable "1"  "Name"                   "${column1[0]}\n" \
+                            "Virtual Address"        "${column1[1]}\n" \
+                            "Real Address"           "${column1[2]}\n" \
+                            "Received"               "${column1[3]}\n" \
+                            "Sent"                   "${column1[4]}\n" \
+                            "Connected Since"        "${column1[5]}\n" \
+                            "Last Ref"               "${column1[6]}\n" \
+                            "Status Updated"         "${updated[1]}\n" \
+                            "Status"                 "${column1[7]}"
+        fi
+    elif [ "$mode" == "list" ]; then
+        declare -a client_name
+        declare -a ip
+        declare -a real_address
+        declare -a state
+        
+        if [ "$(cat $client_db)" == "" ]; then
+            echo "1"
+            printTable "2" "Name" "Virtual Address" "Real Address" "Status\n" \
+                           "-" "-" "-" "-"
+            exit 1
+        fi
+        
+        IFS=',' read -ra updated <<< $(cat $openvpn_status | grep "^Updated,")
+        echo "${updated[0]}: ${updated[1]}"
+        
+        for i in $(cat $client_db); do
+            IFS=',' read -ra client_name_temp <<< $i
+            cl_name="${client_name_temp[0]}"
+            client_name+=("${client_name_temp[0]}")
+            state+=("${client_name_temp[1]}")
+            client_list=$(cat $openvpn_status | grep "^$cl_name,")
+            IFS=',' read -ra client_list <<< $client_list
+            
+            routing_table=$(cat $openvpn_status | grep ",$cl_name,")
+            count=1
+            for line in $routing_table; do
+                count="$(($count + 1))"
+                if [ "$count" == "7" ]; then
+                    routing_table_ipv6=$line
+                fi
+            done
+            IFS="," read -ra routing_table_ipv6 <<< $routing_table_ipv6
+            IFS=',' read -ra routing_table <<< $routing_table
+            
+            if [ "$client_list" == "" ]; then
+                ip+=("-")
+                real_address+=("-")
+            else
+                if ! [ "${routing_table_ipv6[0]}" == "" ]; then
+                    ip+=("${routing_table_ipv6[0]}")
+                else
+                    ip+=("${routing_table[0]}")
+                fi
+                real_address_temp=${client_list[1]}
+                IFS=':' read -ra real_address_temp <<< $real_address_temp
+                real_address+=("${real_address_temp[0]}")
+            fi        
+        done
+
+        printTable "2" "Name" "Virtual Address" "Real Address" "Status\n" \
+                       $(
+                         len=${#client_name[@]};
+                         for ((i = 0 ; i < len ; i++)); do
+                           echo "${client_name[$i]} ${ip[$i]} ${real_address[$i]} ${state[$i]}\n"
+                         done;
+                       )        
+    fi
+}
+
+openvpn_check
+
+if [ "$1" == "" ]; then
+    echo -e "Create and delete OpenVPN client configurations"
+    usage
+fi
+
+for i in $@; do
+    if [[ "$i" == "--help" ]]; then
+            echo -e "Create and delete OpenVPN client configurations"
+            usage
+            exit 1
+    fi
+done
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        h|help|--help)
+            echo -e "Create and delete OpenVPN client configurations"
+            usage
+            exit 1
+            ;;
+        c|create)
+            root_check
+            shift 1
+            if [ "$1" == "" ]; then
+                echo -e "Error: missing name of configuration"
+                usage
+                exit 1
+            fi
+            name=$1
+            create
+            shift 1
+            ;;
+        d|delete)
+            root_check
+            shift 1
+            if [ "$1" == "" ]; then
+                echo -e "Error: missing name of configuration"
+                usage
+                exit 1
+            fi
+            name=$1
+            delete
+            shift 1
+            ;;
+        s|status)
+            root_check
+            if [ "$2" == "" ]; then
+                mode='list'
+            else
+                mode='detailed'
+                name=$2
+                shift 1
+            fi
+            status
+            shift
+            ;;
+        *)
+            echo -e "Syntax"
+            usage
+            exit 1
+            ;;
+    esac
+done
+

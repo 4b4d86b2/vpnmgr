@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 # Name:         deploy_openvpn.sh
-# Description:  Deploy and setup openvpn server and managment scripts
+# Description:  Deploy and setup openvpn server and management scripts
 # OS:           CentOS 7
-# Autor:        <Dmitry V.> dmitry.vlasov@fastmail.com
+# Author:        <Dmitry V.> dmitry.vlasov@fastmail.com
 
 if [[ $EUID -ne 0 ]]; then
    echo "This script must be run as root" 
@@ -85,11 +85,11 @@ chcon -u system_u -t openvpn_etc_rw_t /etc/openvpn/client/clients.db
 mkdir /etc/openvpn/clients/
 chown openvpn:openvpn /etc/openvpn/clients/
 
-if ! [ "$(command -v firewall-cmd)" == "" ]; then
+if ! [[ "$(command -v firewall-cmd)" == "" ]]; then
     firewall-cmd --permanent --add-port "$port/udp"
     firewall-cmd --permanent --add-masquerade
     SHARK=$(ip route get 8.8.8.8 | awk 'NR==1 {print $(NF-2)}')
-    firewall-cmd --permanent --direct --passthrough ipv4 -t nat -A POSTROUTING -s 10.8.0.0/24 -o $SHARK -j MASQUERADE
+    firewall-cmd --permanent --direct --passthrough ipv4 -t nat -A POSTROUTING -s 10.8.0.0/24 -o ${SHARK} -j MASQUERADE
     firewall-cmd --direct --add-rule ipv6 filter FORWARD 0 -i tun0 -o eth0 -j ACCEPT
     firewall-cmd --reload
 fi
@@ -158,7 +158,7 @@ echo '#!/bin/bash
 # Name:         connect.sh
 # Description:  Actions when connecting a user
 # OS:           CentOS 7
-# Autor:        <Dmitry V.> dmitry.vlasov@fastmail.com
+# Author:        <Dmitry V.> dmitry.vlasov@fastmail.com
 
 sed -i "s/^$common_name,Down/$common_name,Up/g" /etc/openvpn/client/clients.db' > /etc/openvpn/client/connect.sh
 
@@ -167,7 +167,7 @@ echo '#!/bin/bash
 # Name:         disconnect.sh
 # Description:  Actions when disconnecting a user
 # OS:           CentOS 7
-# Autor:        <Dmitry V.> dmitry.vlasov@fastmail.com
+# Author:        <Dmitry V.> dmitry.vlasov@fastmail.com
 
 sed -i "s/^$common_name,Up/$common_name,Down/g" /etc/openvpn/client/clients.db' > /etc/openvpn/client/disconnect.sh
 

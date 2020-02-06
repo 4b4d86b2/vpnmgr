@@ -187,7 +187,7 @@ echo "port = $port"
 echo "Installation complete. Use vpnmgr command to manage client configurations.
 Your port is $port.
 Your IP address is $addr. If the value is false, make changes to /etc/openvpn/client/base_configuration.conf before creating client configs.
-Firewalld was also installed. If you are using a custom ssh port, add it using the following commands:: 
+Firewalld was also installed. If you are using a custom ssh port, add it using the following commands: 
     sudo firewall-cmd --permanent --add-port=[PORT]/tcp
     sudo firewall-cmd --reload"
 

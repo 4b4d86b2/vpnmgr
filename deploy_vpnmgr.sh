@@ -15,11 +15,6 @@ addr=$(curl ifconfig.me)
 echo ""
 port=$(awk -v min=35000 -v max=65535 'BEGIN{srand(); print int(min+rand()*(max-min+1))}')
 
-if ! [ "$(command -v firewall-cmd)" == "" ]; then
-    firewall-cmd --permanent --add-port "$port/udp"
-    firewall-cmd --reload
-fi
-
 echo "---------- Install packages ----------"
 yum install -y epel-release
 yum install -y zip unzip wget openvpn firewalld
@@ -91,6 +86,7 @@ mkdir /etc/openvpn/clients/
 chown openvpn:openvpn /etc/openvpn/clients/
 
 if ! [ "$(command -v firewall-cmd)" == "" ]; then
+    firewall-cmd --permanent --add-port "$port/udp"
     firewall-cmd --permanent --add-masquerade
     SHARK=$(ip route get 8.8.8.8 | awk 'NR==1 {print $(NF-2)}')
     firewall-cmd --permanent --direct --passthrough ipv4 -t nat -A POSTROUTING -s 10.8.0.0/24 -o $SHARK -j MASQUERADE

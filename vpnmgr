@@ -222,7 +222,6 @@ function status() {
             exit 1;
         fi
 
-        
         IFS=',' read -ra client_name_temp <<< ${cl_name}
         column1[0]=${client_name_temp[0]}
         column1[7]="${client_name_temp[1]}"
@@ -259,10 +258,31 @@ function status() {
             column1[5]="${client_list[4]}"
             column1[6]="${routing_table[3]}"
         fi
-        
+
         if ! [[ "${column1[4]}" == "-" ]]; then
-            column1[4]="$(awk "BEGIN {print ${column1[4]}/1024/1024}") MB"
-            column1[3]="$(awk "BEGIN {print ${column1[3]}/1024/1024}") MB"
+            if [[ "${column1[3]}" -ge "1099511627776" ]]; then
+                column1[3]="$(awk "BEGIN { printf \"%3.2f\", ${column1[3]}/1024/1024/1024/1024 }") TB"
+            elif [[ "${column1[3]}" -ge "1073741824" ]]; then
+                column1[3]="$(awk "BEGIN { printf \"%3.2f\", ${column1[3]}/1024/1024/1024 }") GB"
+            elif [[ "${column1[3]}" -ge "1048576" ]]; then
+                column1[3]="$(awk "BEGIN { printf \"%3.2f\", ${column1[3]}/1024/1024 }") MB"
+            elif [[ "${column1[3]}" -ge "1024" ]]; then
+                column1[3]="$(awk "BEGIN { printf \"%3.2f\", ${column1[3]}/1024 }") KB"
+            else
+                column1[3]="$(awk "BEGIN { printf \"%3.0f\", ${column1[3]} }") B"
+            fi
+
+            if [[ "${column1[4]}" -ge "1099511627776" ]]; then
+                column1[4]="$(awk "BEGIN { printf \"%3.2f\", ${column1[4]}/1024/1024/1024/1024 }") TB"
+            elif [[ "${column1[4]}" -ge "1073741824" ]]; then
+                column1[4]="$(awk "BEGIN { printf \"%3.2f\", ${column1[4]}/1024/1024/1024 }") GB"
+            elif [[ "${column1[4]}" -ge "1048576" ]]; then
+                column1[4]="$(awk "BEGIN { printf \"%3.2f\", ${column1[4]}/1024/1024 }") MB"
+            elif [[ "${column1[4]}" -ge "1024" ]]; then
+                column1[4]="$(awk "BEGIN { printf \"%3.2f\", ${column1[4]}/1024 }") KB"
+            else
+                column1[4]="$(awk "BEGIN { printf \"%3.0f\", ${column1[4]} }") B"
+            fi
         fi
         
         if ! [[ "${routing_table_ipv6[0]}" == "" ]]; then

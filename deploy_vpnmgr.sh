@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-
+#
 # Name:         deploy_openvpn.sh
 # Description:  Deploy and setup openvpn server and management scripts
 # OS:           CentOS 7
-# Author:        <Dmitry V.> dmitry.vlasov@fastmail.com
+# Author:       <Dmitry V.> dmitry.vlasov@fastmail.com
+# Version:      0.1
 
 if [[ $EUID -ne 0 ]]; then
    echo "This script must be run as root" 

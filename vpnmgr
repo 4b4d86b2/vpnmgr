@@ -208,8 +208,8 @@ function delete() {
 }
 
 function status() {
-    client_db="Workspace/clients.db"
-    openvpn_status="Workspace/openvpn-status.log"
+    client_db="/etc/openvpn/client/clients.db"
+    openvpn_status="/var/log/openvpn/openvpn-status.log"
     
     if [ "$mode" == "detailed" ]; then
         declare -a column0
@@ -294,7 +294,6 @@ function status() {
         declare -a state
         
         if [ "$(cat $client_db)" == "" ]; then
-            echo "1"
             printTable "2" "Name" "Virtual Address" "Real Address" "Status\n" \
                            "-" "-" "-" "-"
             exit 1

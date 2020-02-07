@@ -149,6 +149,22 @@ function trimString() {
     sed 's,^[[:blank:]]*,,' <<< "${string}" | sed 's,[[:blank:]]*$,,'
 }
 
+function bytes_convert() {
+    local bytes=${1}
+    if [[ "${bytes}" -ge "1099511627776" ]]; then
+        bytes="$(awk "BEGIN { printf \"%3.2f\", ${bytes}/1024/1024/1024/1024 }") TB"
+    elif [[ "${bytes}" -ge "1073741824" ]]; then
+        bytes="$(awk "BEGIN { printf \"%3.2f\", ${bytes}/1024/1024/1024 }") GB"
+    elif [[ "${bytes}" -ge "1048576" ]]; then
+        bytes="$(awk "BEGIN { printf \"%3.2f\", ${bytes}/1024/1024 }") MB"
+    elif [[ "${bytes}" -ge "1024" ]]; then
+        bytes="$(awk "BEGIN { printf \"%3.2f\", ${bytes}/1024 }") KB"
+    else
+        bytes="$(awk "BEGIN { printf \"%3.0f\", ${bytes} }") B"
+    fi
+    echo ${bytes}
+}
+
 function create() {
     client_config="/etc/openvpn/clients/$name.ovpn"
     ca_crt="/etc/openvpn/ca/pki/ca.crt"
@@ -272,31 +288,8 @@ function status() {
             column1[6]="${routing_table[3]}"
         fi
 
-        if ! [[ "${column1[4]}" == "-" ]]; then
-            if [[ "${column1[3]}" -ge "1099511627776" ]]; then
-                column1[3]="$(awk "BEGIN { printf \"%3.2f\", ${column1[3]}/1024/1024/1024/1024 }") TB"
-            elif [[ "${column1[3]}" -ge "1073741824" ]]; then
-                column1[3]="$(awk "BEGIN { printf \"%3.2f\", ${column1[3]}/1024/1024/1024 }") GB"
-            elif [[ "${column1[3]}" -ge "1048576" ]]; then
-                column1[3]="$(awk "BEGIN { printf \"%3.2f\", ${column1[3]}/1024/1024 }") MB"
-            elif [[ "${column1[3]}" -ge "1024" ]]; then
-                column1[3]="$(awk "BEGIN { printf \"%3.2f\", ${column1[3]}/1024 }") KB"
-            else
-                column1[3]="$(awk "BEGIN { printf \"%3.0f\", ${column1[3]} }") B"
-            fi
-
-            if [[ "${column1[4]}" -ge "1099511627776" ]]; then
-                column1[4]="$(awk "BEGIN { printf \"%3.2f\", ${column1[4]}/1024/1024/1024/1024 }") TB"
-            elif [[ "${column1[4]}" -ge "1073741824" ]]; then
-                column1[4]="$(awk "BEGIN { printf \"%3.2f\", ${column1[4]}/1024/1024/1024 }") GB"
-            elif [[ "${column1[4]}" -ge "1048576" ]]; then
-                column1[4]="$(awk "BEGIN { printf \"%3.2f\", ${column1[4]}/1024/1024 }") MB"
-            elif [[ "${column1[4]}" -ge "1024" ]]; then
-                column1[4]="$(awk "BEGIN { printf \"%3.2f\", ${column1[4]}/1024 }") KB"
-            else
-                column1[4]="$(awk "BEGIN { printf \"%3.0f\", ${column1[4]} }") B"
-            fi
-        fi
+        if ! [[ "${column1[3]}" == "-" ]]; then column1[3]=$(bytes_convert ${column1[3]}); fi
+        if ! [[ "${column1[4]}" == "-" ]]; then column1[4]=$(bytes_convert ${column1[4]}); fi
 
         if ! [[ "${routing_table_ipv6[0]}" == "" ]]; then
             printTable "1"  "Name"                   "${column1[0]}\n" \

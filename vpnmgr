@@ -39,7 +39,7 @@ function version() {
 
 function update() {
     wget -q "${app['github']}/vpnmgr/master/vpnmgr" -O /usr/bin/vpnmgr && echo "Update complete" || echo "Update failed"
-    chmod +x ./vpnmgr
+    chmod +x /usr/bin/vpnmgr
 }
 
 function root_check() {

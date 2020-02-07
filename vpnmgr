@@ -10,6 +10,7 @@ declare -rA app=(
     ["name"]="vpnmgr"
     ["description"]="Create and delete OpenVPN client configurations"
     ["version"]="0.1"
+    ["github"]="https://raw.githubusercontent.com/Atari365"
 )
 
 function usage() {
@@ -19,8 +20,9 @@ ${app['description']}
 Commands:
     create       Create the client configuration
     delete       Delete the client configuration
-    status       Show existing configurations and their status
     help         Show this message
+    status       Show existing configurations and their status
+    update       Update vpnmgr from github repo
     version      Show the version
 
 Options:
@@ -35,6 +37,10 @@ function version() {
     echo "${app['name']} ${app['version']}"
 }
 
+function update() {
+    wget -q "${app['github']}/vpnmgr/master/vpnmgr" -O ./vpnmgr && echo "Update complete" || echo "Update failed"
+    chmod +x ./vpnmgr
+}
 
 function root_check() {
     if [[ $EUID -ne 0 ]]; then
@@ -321,11 +327,10 @@ function status() {
                 continue
             fi
 
-            local routing_table
             if ! [[ "${routing_table_entry[5]}" == "" ]]; then
-                routing_table=${routing_table_entry[5]}
+                local routing_table=${routing_table_entry[5]}
             else
-                routing_table=${routing_table_entry[0]}
+                local routing_table=${routing_table_entry[0]}
             fi
 
             client_info=($(echo ${routing_table} | tr ',' '\n'))
@@ -364,6 +369,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         v|version|-v|--version)
             version
+            exit 1
+            ;;
+        u|update)
+            root_check
+            update
             exit 1
             ;;
         c|create)

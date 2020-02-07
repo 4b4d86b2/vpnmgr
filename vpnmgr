@@ -248,32 +248,35 @@ function status() {
         client["Name"]=${client_info[0]}
         client["Status"]=${client_info[1]}
 
-        local -a updated
-        IFS=',' read -ra updated <<< $(cat ${openvpn_status_path} | grep "^Updated,")
+        local -a updated=($(cat ${openvpn_status_path} | grep "^Updated," | tr ',' '\n'))
         client['Status Updated']=${updated[1]}
+        for index in 2 3 4 5 ; do
+            client['Status Updated']+=" ${updated[$index]}"
+        done
 
-        client_list=$(cat ${openvpn_status_path} | grep "^${client['Name']},")
-        if [[ "$client_list" != "" ]]; then
-            local -a client_list_entry
-            IFS=',' read -ra client_list_entry <<< ${client_list}
-
-            local routing_table=$(cat ${openvpn_status_path} | grep ",${client['Name']},")
-            local -a routing_table_at_ipv6=($(echo ${routing_table} | tr ',' '\n'))
-            local -a routing_table_entry
-            IFS=',' read -ra routing_table_entry <<< ${routing_table}
-
-            if [[ ${routing_table_at_ipv6[8]} != "" ]]; then
-                client['Virtual IPv4 Address']=${routing_table_at_ipv6[8]}
-                client['Virtual IPv6 Address']=${routing_table_at_ipv6[0]}
+        local -a client_list=($(cat ${openvpn_status_path} | grep "^${client['Name']}," | tr ',' '\n'))
+        local -a routing_table=($(cat ${openvpn_status_path} | grep ",${client['Name']}," | tr ',' '\n'))
+        if [[ ${#client_list[@]} -ne 0 ]]; then
+            if [[ ${routing_table[8]} != "" ]]; then
+                client['Virtual IPv4 Address']=${routing_table[8]}
+                client['Virtual IPv6 Address']=${routing_table[0]}
             else
-                client['Virtual IPv4 Address']=${routing_table_at_ipv6[0]}
+                client['Virtual IPv4 Address']=${routing_table[0]}
             fi
 
-            client['Real Address']=${client_list_entry[1]}
-            client['Received']=$(bytes_convert ${client_list_entry[2]})
-            client['Sent']=$(bytes_convert ${client_list_entry[3]})
-            client['Connected Since']=${client_list_entry[4]}
-            client['Last Ref']=${routing_table_entry[3]}
+            client['Real Address']=${client_list[1]}
+            client['Received']=$(bytes_convert ${client_list[2]})
+            client['Sent']=$(bytes_convert ${client_list[3]})
+
+            client['Connected Since']=${client_list[4]}
+            for index in 5 6 7 8 ; do
+                client['Connected Since']+=" ${client_list[$index]}"
+            done
+
+            client['Last Ref']="${routing_table[3]}"
+            for index in 4 5 6 7 ; do
+                client['Last Ref']+=" ${routing_table[$index]}"
+            done
         fi
 
         printTable "Name"                   "${client['Name']}\n" \

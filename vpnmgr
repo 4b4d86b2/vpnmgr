@@ -221,29 +221,29 @@ function delete() {
 }
 
 function status() {
-    client_db="/etc/openvpn/client/clients.db"
-    openvpn_status="/var/log/openvpn/openvpn-status.log"
+    client_db_path="/etc/openvpn/client/clients.db"
+    openvpn_status_path="/var/log/openvpn/openvpn-status.log"
 
     if [[ "$mode" == "detailed" ]]; then
         declare -a column0
         declare -a column1
 
-        IFS=',' read -ra updated <<< $(cat ${openvpn_status} | grep "^Updated,")
-        cl_name=$(cat ${client_db} | grep "^$name,")
+        IFS=',' read -ra updated <<< $(cat ${openvpn_status_path} | grep "^Updated,")
+        cl_name=$(cat ${client_db_path} | grep "^$name,")
         if [[ "$cl_name" == "" ]]; then
             echo "Configuration not found"
             exit 1;
         fi
 
-        IFS=',' read -ra client_name_temp <<< ${cl_name}
-        column1[0]=${client_name_temp[0]}
-        column1[7]="${client_name_temp[1]}"
-        cl_name=${client_name_temp[0]}
+        IFS=',' read -ra client_info <<< ${cl_name}
+        column1[0]=${client_info[0]}
+        column1[7]="${client_info[1]}"
+        cl_name=${client_info[0]}
 
-        client_list=$(cat ${openvpn_status} | grep "^$cl_name,")
+        client_list=$(cat ${openvpn_status_path} | grep "^$cl_name,")
         IFS=',' read -ra client_list <<< ${client_list}
 
-        routing_table=$(cat ${openvpn_status} | grep --line-buffered --initial-tab ",$cl_name,")
+        routing_table=$(cat ${openvpn_status_path} | grep --line-buffered --initial-tab ",$cl_name,")
         count=1
         for line in ${routing_table}; do
             count="$(($count + 1))"
@@ -321,59 +321,54 @@ function status() {
                             "Status"                 "${column1[7]}"
         fi
     elif [[ "$mode" == "list" ]]; then
-        declare -a client_name
-        declare -a ip
-        declare -a real_address
-        declare -a state
+        local -a client_name
+        local -a virtual_address
+        local -a real_address
+        local -a state
 
-        if [[ "$(cat ${client_db})" == "" ]]; then
+        local client_db=$(cat ${client_db_path})
+        local openvpn_status=$(cat ${openvpn_status_path})
+        local updated
+        if ! [[ "$openvpn_status" == "" ]];  then
+            IFS=',' read -ra updated <<< $(cat ${openvpn_status_path} | grep "^Updated,")
+            echo "${updated[0]}: ${updated[1]}"
+        fi
+        if [[ "$client_db" == "" ]]; then
             printTable "2" "Name" "Virtual Address" "Real Address" "Status\n" \
                            "-" "-" "-" "-"
             exit 1
         fi
 
-        IFS=',' read -ra updated <<< $(cat ${openvpn_status} | grep "^Updated,")
-        echo "${updated[0]}: ${updated[1]}"
+        for line in ${client_db}; do
+            declare -a client_info
+            IFS=',' read -ra client_info <<< ${line}
+            client_name+=("${client_info[0]}")
+            state+=("${client_info[1]}")
 
-        for i in $(cat ${client_db}); do
-            IFS=',' read -ra client_name_temp <<< $i
-            cl_name="${client_name_temp[0]}"
-            client_name+=("${client_name_temp[0]}")
-            state+=("${client_name_temp[1]}")
-            client_list=$(cat ${openvpn_status} | grep "^$cl_name,")
-            IFS=',' read -ra client_list <<< ${client_list}
-
-            routing_table=$(cat ${openvpn_status} | grep ",$cl_name,")
-            count=1
-            for line in ${routing_table}; do
-                count="$(($count + 1))"
-                if [[ "$count" == "7" ]]; then
-                    routing_table_ipv6=$line
-                fi
-            done
-            IFS="," read -ra routing_table_ipv6 <<< ${routing_table_ipv6}
-            IFS=',' read -ra routing_table <<< ${routing_table}
-
-            if [[ "$client_list" == "" ]]; then
-                ip+=("-")
+            declare -a routing_table_entry=($(cat ${openvpn_status_path} | grep ",${client_info[0]},"))
+            if [[ ${#routing_table_entry[@]} -eq 0 ]]; then
+                virtual_address+=("-")
                 real_address+=("-")
-            else
-                if ! [[ "${routing_table_ipv6[0]}" == "" ]]; then
-                    ip+=("${routing_table_ipv6[0]}")
-                else
-                    ip+=("${routing_table[0]}")
-                fi
-                real_address_temp=${client_list[1]}
-                IFS=':' read -ra real_address_temp <<< ${real_address_temp}
-                real_address+=("${real_address_temp[0]}")
+                continue
             fi
+
+            local routing_table
+            if ! [[ "${routing_table_entry[5]}" == "" ]]; then
+                routing_table=${routing_table_entry[5]}
+            else
+                routing_table=${routing_table_entry[0]}
+            fi
+
+            client_info=($(echo ${routing_table} | tr ',' '\n'))
+            virtual_address+=("${client_info[0]}")
+            real_address+=("${client_info[2]}")
         done
 
         printTable "2" "Name" "Virtual Address" "Real Address" "Status\n" \
                        $(
                          len=${#client_name[@]};
-                         for ((i = 0 ; i < len ; i++)); do
-                           echo "${client_name[$i]} ${ip[$i]} ${real_address[$i]} ${state[$i]}\n"
+                         for ((line = 0 ; line < len ; line++)); do
+                           echo "${client_name[$line]} ${virtual_address[$line]} ${real_address[$line]} ${state[$line]}\n"
                          done;
                        )
     fi
@@ -383,11 +378,11 @@ openvpn_check
 
 if [[ "$1" == "" ]]; then usage; fi
 
-for i in $@; do
-    if [[ "$i" == "--help" ]] || [[ "$i" == "-h" ]] ; then
+for line in $@; do
+    if [[ "$line" == "--help" ]] || [[ "$line" == "-h" ]] ; then
             usage
             exit 1
-    elif [[ "$i" == "--version" ]] || [[ "$i" == "-v" ]] ; then
+    elif [[ "$line" == "--version" ]] || [[ "$line" == "-v" ]] ; then
         version
         exit 1
     fi

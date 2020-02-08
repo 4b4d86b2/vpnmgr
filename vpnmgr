@@ -5,12 +5,16 @@
 # OS:           CentOS 7
 # Author:       <Dmitry V.> dmitry.vlasov@fastmail.com
 # Version:      0.1
+# TODO:         Автоматизировать работу функций create и delete (чтобы не было лишних диалогов). Убрать из вывода easyrsa3.
+# TODO:         Refactoring
+# TODO:         Сделать удобную работу с несколькими серверами OpenVPN
+# TODO:         Сдеать нормальный консольный интерфейс
 
 declare -rA app=(
     ["name"]="vpnmgr"
     ["description"]="Create and delete OpenVPN client configurations"
     ["version"]="0.1"
-    ["github"]="https://raw.githubusercontent.com/Atari365"
+    ["github"]="https://github.com/Atari365/vpnmgr"
 )
 
 function usage() {
@@ -38,7 +42,7 @@ function version() {
 }
 
 function update() {
-    wget -q "${app['github']}/vpnmgr/master/vpnmgr" -O /usr/bin/vpnmgr && echo "Update complete" || echo "Update failed"
+    wget -q "https://raw.githubusercontent.com/Atari365/vpnmgr/master/vpnmgr" -O /usr/bin/vpnmgr && echo "Update complete" || echo "Update failed"
     chmod +x /usr/bin/vpnmgr
 }
 

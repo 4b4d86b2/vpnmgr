@@ -4,7 +4,7 @@
 # Description:  Create and delete OpenVPN client configurations
 # OS:           CentOS 7
 # Author:       <Dmitry V.> dmitry.vlasov@fastmail.com
-# Version:      0.1
+# Version:      0.2
 # TODO:         Refactoring
 # TODO:         Сделать удобную работу с несколькими серверами OpenVPN
 # TODO:         Сдеать нормальный консольный интерфейс (с точки зрения кода)
@@ -12,7 +12,7 @@
 declare -rA app=(
     ["name"]="vpnmgr"
     ["description"]="Create and delete OpenVPN client configurations"
-    ["version"]="0.1"
+    ["version"]="0.2"
     ["github"]="https://github.com/Atari365/vpnmgr"
 )
 

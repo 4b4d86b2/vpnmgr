@@ -4,7 +4,7 @@
 # Description:  Deploy and setup openvpn server and management scripts
 # OS:           CentOS 7
 # Author:       <Dmitry V.> dmitry.vlasov@fastmail.com
-# Version:      0.1
+# Version:      0.2
 # TODO          Устанавливать права от пользователя с gid=1000. Если такого нет, предложить создать.
 # TODO:         Почистить вывод от лишнего. Сделать его красивым.
 # TODO:         Написать кучу if'ов в начале. Для защиты от запуска там, где скрипт заведомо выполнится неверно. Предлагать варианты решениий.

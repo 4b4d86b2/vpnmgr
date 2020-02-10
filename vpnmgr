@@ -160,15 +160,6 @@ function bytes_convert() {
 }
 
 function create() {
-#  path                                              |  after create  |  after delete
-# ---------------------------------------------------+----------------+----------------
-#  /etc/openvpn/pki/pki/reqs/0.req                   |  +             |  +
-#  /etc/openvpn/pki/pki/private/0.key                |  +             |  +
-#  /etc/openvpn/ca/pki/reqs/0.req                    |  +             |  -
-#  /etc/openvpn/ca/pki/issued/0.crt                  |  +             |  -
-#  /etc/openvpn/ca/pki/certs_by_serial/[serial].pem  |  +             |  -
-# ---------------------------------------------------+----------------+---------------
-#  /etc/openvpn/ca/pki/index.txt                     |  +             |  + (with add)
     local -r name=$1
 
     client_config="/etc/openvpn/clients/$name.ovpn"
@@ -205,7 +196,7 @@ function create() {
     fi
     unset password_0
     unset password_1
-    echo -e ${gen_pki_input} | ./easyrsa gen-req ${name} > /dev/null 2>&1
+    echo ${gen_pki_input} | ./easyrsa gen-req ${name} > /dev/null 2>&1
     unset gen_pki_input
     if ! [[ -f "${pki_path}/pki/reqs/$name.req" ]]; then
         echo "Unexpected error creating request by PKI"
@@ -218,7 +209,8 @@ function create() {
         echo "Unexpected error importing request to the CA"
         exit 1
     fi
-    echo -e "yes"./easyrsa sign-req client ${name} > /dev/null 2>&1
+
+    echo "yes" | ./easyrsa sign-req client ${name} > /dev/null 2>&1
     if ! [[ -f ${client_crt} ]]; then
         echo "Unexpected error signing certificate by CA"
         exit 1
@@ -248,9 +240,18 @@ function create() {
 function delete() {
     local -r name=$1
 
+    local input
+    echo "Please confirm you wish to revoke the certificate."
+    read -sp "Type the word 'yes' to continue, or any other input to abort: " input
+    echo ""
+
+    if [[ ${input} != "yes" ]]; then
+        exit 1
+    fi
+
     if [[ -f "/etc/openvpn/ca/pki/reqs/$name.req" ]] || [[ -f "/etc/openvpn/ca/pki/issued/$name.crt" ]]; then
         cd /etc/openvpn/ca
-        ./easyrsa revoke ${name}
+        echo ${input} | ./easyrsa revoke ${name} > /dev/null 2>&1
         ./easyrsa gen-crl
         systemctl restart openvpn@server
     fi

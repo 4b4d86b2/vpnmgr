@@ -1,8 +1,5 @@
-# vpnmgr
-Deploy and setup openvpn server and management scripts
-
-## Deploy
-### Create openvpn user:
+# Deploy
+## Create openvpn user:
 ```bash
 useradd openvpn
 passwd openvpn
@@ -10,12 +7,12 @@ usermod -aG wheel openvpn
 su - openvpn
 ```
 
-### Clone repo:
+## Clone repo:
 ```bash
 git clone https://github.com/Atari365/vpnmgr.git
 ```
 
-### Run deploy_vpnmgr.sh
+## Run deploy_vpnmgr.sh
 ```bash
 cd vpnmgr
 chmod +x deploy_vpnmgr.sh
@@ -23,7 +20,7 @@ sudo ./deploy_vpnmgr.sh
 ```
 Important: Firewalld will be installed. If you use custom ssh port, add it to firewall, or you lose ssh.
 
-## How to use vpnmgr 
+# How to use vpnmgr 
 ```text
 Usage: vpnmgr command [options]
    Create and delete OpenVPN client configurations

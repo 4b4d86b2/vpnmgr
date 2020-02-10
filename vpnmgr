@@ -9,6 +9,7 @@
 # TODO:         Refactoring
 # TODO:         Сделать удобную работу с несколькими серверами OpenVPN
 # TODO:         Сдеать нормальный консольный интерфейс
+# FIXME:        OpenVPN меняет строки с IPv6 и IPv4 местами в файле openvpn-status.log
 
 declare -rA app=(
     ["name"]="vpnmgr"
@@ -159,37 +160,71 @@ function bytes_convert() {
 }
 
 function create() {
+#  path                                              |  after create  |  after delete
+# ---------------------------------------------------+----------------+----------------
+#  /etc/openvpn/pki/pki/reqs/0.req                   |  +             |  +
+#  /etc/openvpn/pki/pki/private/0.key                |  +             |  +
+#  /etc/openvpn/ca/pki/reqs/0.req                    |  +             |  -
+#  /etc/openvpn/ca/pki/issued/0.crt                  |  +             |  -
+#  /etc/openvpn/ca/pki/certs_by_serial/[serial].pem  |  +             |  -
+# ---------------------------------------------------+----------------+---------------
+#  /etc/openvpn/ca/pki/index.txt                     |  +             |  + (with add)
+    local -r name=$1
+
     client_config="/etc/openvpn/clients/$name.ovpn"
     ca_crt="/etc/openvpn/ca/pki/ca.crt"
     client_key="/etc/openvpn/pki/pki/private/$name.key"
     client_crt="/etc/openvpn/ca/pki/issued/$name.crt"
     ta="/etc/openvpn/server/ta.key"
+    pki_path="/etc/openvpn/pki"
+    ca_path="/etc/openvpn/ca"
+    base_config="/etc/openvpn/client/base_configuration.conf"
+    clients_db="/etc/openvpn/client/clients.db"
 
     if [[ -f ${client_config} ]]; then
         echo "Client configuration already exist"
         exit 1
     fi
 
-    cd /etc/openvpn/pki
-    ./easyrsa gen-req ${name}
-    if ! [[ -f "/etc/openvpn/pki/pki/reqs/$name.req" ]]; then
+    cd ${pki_path}
+    local password_0="default_0"
+    local password_1="default_1"
+    read -sp "Enter pass phrase: " password_0
+    echo ""
+    read -sp "Verify - Enter pass phrase: " password_1
+    echo ""
+    if [[ ${password_0} != ${password_1} ]] || [[ ${password_0} == "default_0" ]]; then
+        echo "Pass phrases do not match"
+        exit 1
+    fi
+    local gen_pki_input
+    if [[ -f "$pki_path/pki/reqs/$name.req" ]]; then
+        gen_pki_input="yes\n$password_0\n$password_1\n\n"
+    else
+        gen_pki_input="$password_0\n$password_1\n\n"
+    fi
+    unset password_0
+    unset password_1
+    echo -e ${gen_pki_input} | ./easyrsa gen-req ${name} > /dev/null 2>&1
+    unset gen_pki_input
+    if ! [[ -f "${pki_path}/pki/reqs/$name.req" ]]; then
         echo "Unexpected error creating request by PKI"
         exit 1
     fi
 
-    cd /etc/openvpn/ca
-    ./easyrsa import-req /etc/openvpn/pki/pki/reqs/${name}.req ${name}
-    if ! [[ -f "/etc/openvpn/ca/pki/reqs/$name.req" ]]; then
+    cd ${ca_path}
+    ./easyrsa import-req "${pki_path}/pki/reqs/${name}.req" ${name} > /dev/null 2>&1
+    if ! [[ -f "${ca_path}/pki/reqs/$name.req" ]]; then
         echo "Unexpected error importing request to the CA"
         exit 1
     fi
-    ./easyrsa sign-req client ${name}
+    echo -e "yes"./easyrsa sign-req client ${name} > /dev/null 2>&1
     if ! [[ -f ${client_crt} ]]; then
         echo "Unexpected error signing certificate by CA"
         exit 1
     fi
 
-    cat /etc/openvpn/client/base_configuration.conf \
+    cat ${base_config} \
         <(echo -e '<ca>') \
         ${ca_crt} \
         <(echo -e '</ca>\n<cert>') \
@@ -206,11 +241,13 @@ function create() {
         exit 1
     fi
     chown openvpn:openvpn ${client_config}
-    echo "$name,Down" >> /etc/openvpn/client/clients.db
-    echo "Config $name created in /etc/openvpn/clients"
+    echo "$name,Down" >> ${clients_db}
+    echo "Config $name created in ${client_config}"
 }
 
 function delete() {
+    local -r name=$1
+
     if [[ -f "/etc/openvpn/ca/pki/reqs/$name.req" ]] || [[ -f "/etc/openvpn/ca/pki/issued/$name.crt" ]]; then
         cd /etc/openvpn/ca
         ./easyrsa revoke ${name}
@@ -229,126 +266,132 @@ function delete() {
     echo "Configuration $name has been deleted"
 }
 
-function status() {
+function status_list() {
     client_db_path="/etc/openvpn/client/clients.db"
     openvpn_status_path="/var/log/openvpn/openvpn-status.log"
 
-    if [[ "$mode" == "detailed" ]]; then
-        local -A client=(
-            ["Name"]="-"
-            ["Virtual IPv4 Address"]="-"
-            ["Virtual IPv6 Address"]="-"
-            ["Real Address"]="-"
-            ["Received"]="-"
-            ["Sent"]="-"
-            ["Connected Since"]="-"
-            ["Last Ref"]="-"
-            ["Status Updated"]="-"
-            ["Status"]="-"
-        )
+    local -a client_name
+    local -a virtual_address
+    local -a real_address
+    local -a state
 
-        client_db=$(cat ${client_db_path} | grep "^$name,")
-        if [[ "$client_db" == "" ]]; then
-            echo "Configuration not found"
-            exit 1;
-        fi
-
-        local -a client_info
-        IFS=',' read -ra client_info <<< ${client_db}
-        client["Name"]=${client_info[0]}
-        client["Status"]=${client_info[1]}
-
-        local -a updated=($(cat ${openvpn_status_path} | grep "^Updated," | tr ',' '\n'))
-        client['Status Updated']=${updated[1]}
-        for index in 2 3 4 5 ; do
-            client['Status Updated']+=" ${updated[$index]}"
-        done
-
-        local -a client_list=($(cat ${openvpn_status_path} | grep "^${client['Name']}," | tr ',' '\n'))
-        local -a routing_table=($(cat ${openvpn_status_path} | grep ",${client['Name']}," | tr ',' '\n'))
-        if [[ ${#client_list[@]} -ne 0 ]]; then
-            if [[ ${routing_table[8]} != "" ]]; then
-                client['Virtual IPv4 Address']=${routing_table[8]}
-                client['Virtual IPv6 Address']=${routing_table[0]}
-            else
-                client['Virtual IPv4 Address']=${routing_table[0]}
-            fi
-
-            client['Real Address']=${client_list[1]}
-            client['Received']=$(bytes_convert ${client_list[2]})
-            client['Sent']=$(bytes_convert ${client_list[3]})
-
-            client['Connected Since']=${client_list[4]}
-            for index in 5 6 7 8 ; do
-                client['Connected Since']+=" ${client_list[$index]}"
-            done
-
-            client['Last Ref']="${routing_table[3]}"
-            for index in 4 5 6 7 ; do
-                client['Last Ref']+=" ${routing_table[$index]}"
-            done
-        fi
-
-        printTable "Name"                   "${client['Name']}\n" \
-                   "Virtual IPv4 Address"   "${client['Virtual IPv4 Address']}\n" \
-                   "Virtual IPv6 Address"   "${client['Virtual IPv6 Address']}\n"\
-                   "Real Address"           "${client['Real Address']}\n" \
-                   "Received"               "${client['Received']}\n" \
-                   "Sent"                   "${client['Sent']}\n" \
-                   "Connected Since"        "${client['Connected Since']}\n" \
-                   "Last Ref"               "${client['Last Ref']}\n" \
-                   "Status Updated"         "${client['Status Updated']}\n" \
-                   "Status"                 "${client['Status']}"
-    elif [[ "$mode" == "list" ]]; then
-        local -a client_name
-        local -a virtual_address
-        local -a real_address
-        local -a state
-
-        local client_db=$(cat ${client_db_path})
-        local openvpn_status=$(cat ${openvpn_status_path})
-        local updated
-        if ! [[ "$openvpn_status" == "" ]];  then
-            IFS=',' read -ra updated <<< $(cat ${openvpn_status_path} | grep "^Updated,")
-            echo "${updated[0]}: ${updated[1]}"
-        fi
-        if [[ "$client_db" == "" ]]; then
-            printTable "2" "Name" "Virtual Address" "Real Address" "Status\n" \
-                           "-" "-" "-" "-"
-            exit 1
-        fi
-
-        for line in ${client_db}; do
-            local -a client_info
-            IFS=',' read -ra client_info <<< ${line}
-            client_name+=("${client_info[0]}")
-            state+=("${client_info[1]}")
-
-            local -a routing_table_entry=($(cat ${openvpn_status_path} | grep ",${client_info[0]},"))
-            if [[ ${#routing_table_entry[@]} -eq 0 ]]; then
-                virtual_address+=("-")
-                real_address+=("-")
-                continue
-            fi
-
-            if ! [[ "${routing_table_entry[5]}" == "" ]]; then
-                local routing_table=${routing_table_entry[5]}
-            else
-                local routing_table=${routing_table_entry[0]}
-            fi
-
-            client_info=($(echo ${routing_table} | tr ',' '\n'))
-            virtual_address+=("${client_info[0]}")
-            real_address+=("${client_info[2]}")
-        done
-
-        printTable "Name" "Virtual Address" "Real Address" "Status\n" \
-                   $(
-                       for index in "${!client_name[@]}" ; do
-                           echo "${client_name[$index]} ${virtual_address[$index]} ${real_address[$index]} ${state[$index]}\n"
-                       done
-                   )
+    local client_db=$(cat ${client_db_path})
+    local openvpn_status=$(cat ${openvpn_status_path})
+    local -a updated
+    if ! [[ "$openvpn_status" == "" ]];  then
+        IFS=',' read -ra updated <<< $(cat ${openvpn_status_path} | grep "^Updated,")
+        echo "${updated[0]}: ${updated[1]}"
     fi
+    if [[ "$client_db" == "" ]]; then
+        printTable "2" "Name" "Virtual Address" "Real Address" "Status\n" \
+                       "-" "-" "-" "-"
+        exit 1
+    fi
+
+    for line in ${client_db}; do
+        local -a client_info
+        IFS=',' read -ra client_info <<< ${line}
+        client_name+=("${client_info[0]}")
+        state+=("${client_info[1]}")
+
+        local -a routing_table_entry=($(cat ${openvpn_status_path} | grep ",${client_info[0]},"))
+        if [[ ${#routing_table_entry[@]} -eq 0 ]]; then
+            virtual_address+=("-")
+            real_address+=("-")
+            continue
+        fi
+
+        local routing_table
+        if ! [[ "${routing_table_entry[5]}" == "" ]]; then
+            local routing_table=${routing_table_entry[5]}
+        else
+            routing_table=${routing_table_entry[0]}
+        fi
+
+        client_info=($(echo ${routing_table} | tr ',' '\n'))
+        virtual_address+=("${client_info[0]}")
+        real_address+=("${client_info[2]}")
+    done
+
+    printTable "Name" "Virtual Address" "Real Address" "Status\n" \
+               $(
+                   for index in "${!client_name[@]}" ; do
+                       echo "${client_name[$index]} ${virtual_address[$index]} ${real_address[$index]} ${state[$index]}\n"
+                   done
+               )
+}
+
+function detailed_status() {
+    local -r name=$1
+
+    client_db_path="/etc/openvpn/client/clients.db"
+    openvpn_status_path="/var/log/openvpn/openvpn-status.log"
+
+    local -A client=(
+        ["Name"]="-"
+        ["Virtual IPv4 Address"]="-"
+        ["Virtual IPv6 Address"]="-"
+        ["Real Address"]="-"
+        ["Received"]="-"
+        ["Sent"]="-"
+        ["Connected Since"]="-"
+        ["Last Ref"]="-"
+        ["Status Updated"]="-"
+        ["Status"]="-"
+    )
+
+    client_db=$(cat ${client_db_path} | grep "^$name,")
+    if [[ "$client_db" == "" ]]; then
+        echo "Configuration not found"
+        exit 1;
+    fi
+
+    local -a client_info
+    IFS=',' read -ra client_info <<< ${client_db}
+    client["Name"]=${client_info[0]}
+    client["Status"]=${client_info[1]}
+
+    local -a updated=($(cat ${openvpn_status_path} | grep "^Updated," | tr ',' '\n'))
+    client['Status Updated']=${updated[1]}
+    for index in 2 3 4 5 ; do
+        client['Status Updated']+=" ${updated[$index]}"
+    done
+
+    local -a client_list=($(cat ${openvpn_status_path} | grep "^${client['Name']}," | tr ',' '\n'))
+    local -a routing_table=($(cat ${openvpn_status_path} | grep ",${client['Name']}," | tr ',' '\n'))
+    if [[ ${#client_list[@]} -ne 0 ]]; then
+        if [[ ${routing_table[8]} != "" ]]; then
+            client['Virtual IPv4 Address']=${routing_table[8]}
+            client['Virtual IPv6 Address']=${routing_table[0]}
+        else
+            client['Virtual IPv4 Address']=${routing_table[0]}
+        fi
+
+        client['Real Address']=${client_list[1]}
+        client['Received']=$(bytes_convert ${client_list[2]})
+        client['Sent']=$(bytes_convert ${client_list[3]})
+
+        client['Connected Since']=${client_list[4]}
+        for index in 5 6 7 8 ; do
+            client['Connected Since']+=" ${client_list[$index]}"
+        done
+
+        client['Last Ref']="${routing_table[3]}"
+        for index in 4 5 6 7 ; do
+            client['Last Ref']+=" ${routing_table[$index]}"
+        done
+    fi
+
+    printTable "Name"                   "${client['Name']}\n" \
+               "Virtual IPv4 Address"   "${client['Virtual IPv4 Address']}\n" \
+               "Virtual IPv6 Address"   "${client['Virtual IPv6 Address']}\n"\
+               "Real Address"           "${client['Real Address']}\n" \
+               "Received"               "${client['Received']}\n" \
+               "Sent"                   "${client['Sent']}\n" \
+               "Connected Since"        "${client['Connected Since']}\n" \
+               "Last Ref"               "${client['Last Ref']}\n" \
+               "Status Updated"         "${client['Status Updated']}\n" \
+               "Status"                 "${client['Status']}"
 }
 
 openvpn_check
@@ -357,8 +400,8 @@ if [[ "$1" == "" ]]; then usage; fi
 
 for line in $@; do
     if [[ "$line" == "--help" ]] || [[ "$line" == "-h" ]] ; then
-            usage
-            exit 1
+        usage
+        exit 1
     elif [[ "$line" == "--version" ]] || [[ "$line" == "-v" ]] ; then
         version
         exit 1
@@ -367,11 +410,11 @@ done
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        h|help|--help)
+        h|help)
             usage
             exit 1
             ;;
-        v|version|-v|--version)
+        v|version)
             version
             exit 1
             ;;
@@ -388,8 +431,7 @@ while [[ $# -gt 0 ]]; do
                 usage
                 exit 1
             fi
-            name=$1
-            create
+            create $1
             shift 1
             ;;
         d|delete)
@@ -400,21 +442,18 @@ while [[ $# -gt 0 ]]; do
                 usage
                 exit 1
             fi
-            name=$1
-            delete
+            delete $1
             shift 1
             ;;
         s|status)
             root_check
             if [[ "$2" == "" ]]; then
-                mode='list'
-            else
-                mode='detailed'
-                name=$2
+                status_list
                 shift 1
+            else
+                detailed_status $2
+                shift 2
             fi
-            status
-            shift
             ;;
         *)
             echo -e "Syntax error. See help"

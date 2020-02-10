@@ -7,8 +7,7 @@
 # Version:      0.1
 # TODO:         Refactoring
 # TODO:         Сделать удобную работу с несколькими серверами OpenVPN
-# TODO:         Сдеать нормальный консольный интерфейс
-# FIXME:        OpenVPN меняет строки с IPv6 и IPv4 местами в файле openvpn-status.log
+# TODO:         Сдеать нормальный консольный интерфейс (с точки зрения кода)
 
 declare -rA app=(
     ["name"]="vpnmgr"
@@ -291,8 +290,15 @@ function status_list() {
         fi
 
         client_info=($(echo ${routing_table} | tr ',' '\n'))
-        virtual_address+=("${client_info[0]}")
+
         real_address+=("${client_info[2]}")
+
+        if ! [[ ${client_info[0]} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            local -a routing_table_at_swap_string=($(echo ${routing_table_entry[0]} | tr ',' '\n'))
+            virtual_address+=("${routing_table_at_swap_string[0]}")
+        else
+            virtual_address+=("${client_info[0]}")
+        fi
     done
 
     printTable "Name" "Virtual Address" "Real Address" "Status\n" \
@@ -362,6 +368,12 @@ function detailed_status() {
         for index in 4 5 6 7 ; do
             client['Last Ref']+=" ${routing_table[$index]}"
         done
+    fi
+
+    if ! [[ ${client['Virtual IPv4 Address']} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        local temp=${client['Virtual IPv4 Address']}
+        client['Virtual IPv4 Address']=${client['Virtual IPv6 Address']}
+        client['Virtual IPv6 Address']=${temp}
     fi
 
     printTable "Name"                   "${client['Name']}\n" \

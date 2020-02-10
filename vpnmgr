@@ -5,7 +5,6 @@
 # OS:           CentOS 7
 # Author:       <Dmitry V.> dmitry.vlasov@fastmail.com
 # Version:      0.1
-# TODO:         Автоматизировать работу функций create и delete (чтобы не было лишних диалогов). Убрать из вывода easyrsa3.
 # TODO:         Refactoring
 # TODO:         Сделать удобную работу с несколькими серверами OpenVPN
 # TODO:         Сдеать нормальный консольный интерфейс
@@ -178,25 +177,7 @@ function create() {
     fi
 
     cd ${pki_path}
-    local password_0="default_0"
-    local password_1="default_1"
-    read -sp "Enter pass phrase: " password_0
-    echo ""
-    read -sp "Verify - Enter pass phrase: " password_1
-    echo ""
-    if [[ ${password_0} != ${password_1} ]] || [[ ${password_0} == "default_0" ]]; then
-        echo "Pass phrases do not match"
-        exit 1
-    fi
-    local gen_pki_input
-    if [[ -f "$pki_path/pki/reqs/$name.req" ]]; then
-        gen_pki_input="yes\n$password_0\n$password_1\n\n"
-    else
-        gen_pki_input="$password_0\n$password_1\n\n"
-    fi
-    unset password_0
-    unset password_1
-    echo ${gen_pki_input} | ./easyrsa gen-req ${name} > /dev/null 2>&1
+   ./easyrsa gen-req ${name} batch
     unset gen_pki_input
     if ! [[ -f "${pki_path}/pki/reqs/$name.req" ]]; then
         echo "Unexpected error creating request by PKI"
@@ -242,7 +223,7 @@ function delete() {
 
     local input
     echo "Please confirm you wish to revoke the certificate."
-    read -sp "Type the word 'yes' to continue, or any other input to abort: " input
+    read -p "Type the word 'yes' to continue, or any other input to abort: " input
     echo ""
 
     if [[ ${input} != "yes" ]]; then
@@ -252,8 +233,8 @@ function delete() {
     if [[ -f "/etc/openvpn/ca/pki/reqs/$name.req" ]] || [[ -f "/etc/openvpn/ca/pki/issued/$name.crt" ]]; then
         cd /etc/openvpn/ca
         echo ${input} | ./easyrsa revoke ${name} > /dev/null 2>&1
-        ./easyrsa gen-crl
-        systemctl restart openvpn@server
+        ./easyrsa gen-crl > /dev/null 2>&1
+        systemctl restart openvpn@server > /dev/null 2>&1
     fi
 
     if ! [[ -f "/etc/openvpn/clients/$name.ovpn" ]]; then

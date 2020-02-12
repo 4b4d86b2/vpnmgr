@@ -5,16 +5,18 @@
 # OS:           CentOS 7
 # Author:       <Dmitry V.> dmitry.vlasov@fastmail.com
 # Version:      0.2
-# TODO:         Refactoring
-# TODO:         Сделать удобную работу с несколькими серверами OpenVPN
-# TODO:         Сдеать нормальный консольный интерфейс (с точки зрения кода)
+# TODO:         Сделать удобную работу с несколькими серверами OpenVPN (развертывание, удаление, управление конфигурациями сервера, установка сервера по умолчанию)
+# TODO:         Сдеать нормальный консольный интерфейс (Refactoring)
 
 declare -rA app=(
     ["name"]="vpnmgr"
     ["description"]="Create and delete OpenVPN client configurations"
     ["version"]="0.2"
     ["github"]="https://github.com/Atari365/vpnmgr"
+    ["dir"]="${app['dir']}"
 )
+
+declare server_name="server"
 
 function usage() {
     echo "Usage: vpnmgr command [options]
@@ -53,7 +55,7 @@ function root_check() {
 }
 
 function openvpn_check() {
-    if ! [[ -f "/etc/openvpn/server/check" ]]; then
+    if ! [[ -f "${app['dir']}/${server_name}/server/check" ]]; then
         echo "OpenVPN is not deployed. Use the deploy_vpnmgr.sh"
         exit 1
     fi
@@ -160,15 +162,15 @@ function bytes_convert() {
 function create() {
     local -r name=$1
 
-    client_config="/etc/openvpn/clients/$name.ovpn"
-    ca_crt="/etc/openvpn/ca/pki/ca.crt"
-    client_key="/etc/openvpn/pki/pki/private/$name.key"
-    client_crt="/etc/openvpn/ca/pki/issued/$name.crt"
-    ta="/etc/openvpn/server/ta.key"
-    pki_path="/etc/openvpn/pki"
-    ca_path="/etc/openvpn/ca"
-    base_config="/etc/openvpn/client/base_configuration.conf"
-    clients_db="/etc/openvpn/client/clients.db"
+    client_config="${app['dir']}/${server_name}/client_configs/$name.ovpn"
+    ca_crt="${app['dir']}/${server_name}/ca/pki/ca.crt"
+    client_key="${app['dir']}/${server_name}/pki/pki/private/$name.key"
+    client_crt="${app['dir']}/${server_name}/ca/pki/issued/$name.crt"
+    ta="${app['dir']}/${server_name}/server/ta.key"
+    pki_path="${app['dir']}/${server_name}/pki"
+    ca_path="${app['dir']}/${server_name}/ca"
+    base_config="${app['dir']}/${server_name}/server/base_configuration.conf"
+    clients_db="${app['dir']}/${server_name}/server/clients.db"
 
     if [[ -f ${client_config} ]]; then
         echo "Client configuration already exist"
@@ -212,13 +214,18 @@ function create() {
         echo "Unexpected error creating client configuration"
         exit 1
     fi
-    chown openvpn:openvpn ${client_config}
+    chown $(id -un 1000):$(id -un 1000) ${client_config}
     echo "$name,Down" >> ${clients_db}
     echo "Config $name created in ${client_config}"
 }
 
 function delete() {
     local -r name=$1
+
+    ca_path="${app['dir']}/${server_name}/ca"
+    req_path="${app['dir']}/${server_name}/ca/pki/reqs/$name.req"
+    crt_path="${app['dir']}/${server_name}/ca/pki/issued/$name.crt"
+    client_config="${app['dir']}/${server_name}/client_configs/$name.ovpn"
 
     local input
     echo "Please confirm you wish to revoke the certificate."
@@ -229,27 +236,27 @@ function delete() {
         exit 1
     fi
 
-    if [[ -f "/etc/openvpn/ca/pki/reqs/$name.req" ]] || [[ -f "/etc/openvpn/ca/pki/issued/$name.crt" ]]; then
-        cd /etc/openvpn/ca
+    if [[ -f ${req_path} ]] || [[ -f ${crt_path} ]]; then
+        cd ${ca_path}
         echo ${input} | ./easyrsa revoke ${name} > /dev/null 2>&1
         ./easyrsa gen-crl > /dev/null 2>&1
-        systemctl restart openvpn@server > /dev/null 2>&1
+        systemctl restart openvpn@${server_name}_vpnmgr > /dev/null 2>&1
     fi
 
-    if ! [[ -f "/etc/openvpn/clients/$name.ovpn" ]]; then
+    if ! [[ -f ${client_config} ]]; then
         echo "Client configuration does not exist"
         exit 1
     fi
-    rm /etc/openvpn/clients/${name}.ovpn
-    cp /etc/openvpn/ca/pki/crl.pem /etc/openvpn/server/
-    sed -i "/^$name,/d" /etc/openvpn/client/ipp.txt
-    sed -i "/^$name,/d" /etc/openvpn/client/clients.db
+    rm ${client_config}
+    cp ${app['dir']}/${server_name}/ca/pki/crl.pem ${app['dir']}/${server_name}/server
+    sed -i "/^$name,/d" ${app['dir']}/${server_name}/server/ipp.txt
+    sed -i "/^$name,/d" ${app['dir']}/${server_name}/server/clients.db
     echo "Configuration $name has been deleted"
 }
 
 function status_list() {
-    client_db_path="/etc/openvpn/client/clients.db"
-    openvpn_status_path="/var/log/openvpn/openvpn-status.log"
+    client_db_path="${app['dir']}/${server_name}/server/clients.db"
+    openvpn_status_path="${app['dir']}/${server_name}/server/openvpn-status.log"
 
     local -a client_name
     local -a virtual_address
@@ -264,8 +271,8 @@ function status_list() {
         echo "${updated[0]}: ${updated[1]}"
     fi
     if [[ "$client_db" == "" ]]; then
-        printTable "2" "Name" "Virtual Address" "Real Address" "Status\n" \
-                       "-" "-" "-" "-"
+        printTable "Name" "Virtual Address" "Real Address" "Status\n" \
+                   "-" "-" "-" "-"
         exit 1
     fi
 
@@ -311,9 +318,8 @@ function status_list() {
 
 function detailed_status() {
     local -r name=$1
-
-    client_db_path="/etc/openvpn/client/clients.db"
-    openvpn_status_path="/var/log/openvpn/openvpn-status.log"
+    client_db_path="${app['dir']}/${server_name}/server/clients.db"
+    openvpn_status_path="${app['dir']}/${server_name}/server/openvpn-status.log"
 
     local -A client=(
         ["Name"]="-"

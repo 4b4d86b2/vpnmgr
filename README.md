@@ -1,19 +1,6 @@
 # Deploy
-## Create openvpn user:
-```bash
-useradd openvpn
-passwd openvpn
-usermod -aG wheel openvpn
-su - openvpn
-```
-
-## Clone repo:
 ```bash
 git clone https://github.com/Atari365/vpnmgr.git
-```
-
-## Run deploy_vpnmgr.sh
-```bash
 cd vpnmgr
 chmod +x deploy_vpnmgr.sh
 sudo ./deploy_vpnmgr.sh

@@ -21,7 +21,7 @@ fi
 echo "Script deploying vpnmgr"
 
 username_default=$(id -un 1000)
-addr_default=$(dig @resolver1.opendns.com ANY myip.opendns.com +short)
+addr_default=$(curl -s http://ipecho.net/plain)
 port_default=$(awk -v min=35000 -v max=65535 'BEGIN{srand(); print int(min+rand()*(max-min+1))}')
 server_name_default="server"
 

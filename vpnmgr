@@ -13,7 +13,7 @@ declare -rA app=(
     ["description"]="Create and delete OpenVPN client configurations"
     ["version"]="0.2"
     ["github"]="https://github.com/Atari365/vpnmgr"
-    ["dir"]="${app['dir']}"
+    ["dir"]="/etc/openvpn/vpnmgr"
 )
 
 declare server_name="server"

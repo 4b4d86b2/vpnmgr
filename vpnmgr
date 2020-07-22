@@ -178,7 +178,7 @@ function create() {
     fi
 
     cd ${pki_path}
-   ./easyrsa gen-req ${name} batch
+    ./easyrsa gen-req ${name} batch
     unset gen_pki_input
     if ! [[ -f "${pki_path}/pki/reqs/$name.req" ]]; then
         echo "Unexpected error creating request by PKI"
@@ -252,6 +252,7 @@ function delete() {
     sed -i "/^$name,/d" ${app['dir']}/${server_name}/server/ipp.txt
     sed -i "/^$name,/d" ${app['dir']}/${server_name}/server/clients.db
     echo "Configuration $name has been deleted"
+    sudo systemctl restart openvpn@server_vpnmgr
 }
 
 function status_list() {

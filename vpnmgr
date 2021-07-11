@@ -5,8 +5,6 @@
 # OS:           CentOS 7
 # Author:       <Dmitry V.> dmitry.vlasov@fastmail.com
 # Version:      0.2
-# TODO:         Сделать удобную работу с несколькими серверами OpenVPN (развертывание, удаление, управление конфигурациями сервера, установка сервера по умолчанию)
-# TODO:         Сдеать нормальный консольный интерфейс (Refactoring)
 
 declare -rA app=(
     ["name"]="vpnmgr"

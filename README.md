@@ -1,4 +1,6 @@
 # Развертывание
+**Для развертывания использовать только операционную систему CentOS 7. С другими дистрибутивами и версиями скрипт несовместим.**
+
 ```bash
 sudo yum install epel-release git firewalld
 sudo systemctl enable firewalld
@@ -6,7 +8,7 @@ sudo systemctl start firewalld
 sudo yum update
 sudo reboot
 
-# After reboot
+# После перезагрузки
 git clone https://github.com/4b4d86b2/vpnmgr.git
 cd vpnmgr
 chmod +x deploy_vpnmgr.sh

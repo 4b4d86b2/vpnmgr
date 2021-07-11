@@ -1,4 +1,4 @@
-# Deploy
+# Развертывание
 ```bash
 sudo yum install epel-release git firewalld
 sudo systemctl enable firewalld
@@ -12,34 +12,31 @@ cd vpnmgr
 chmod +x deploy_vpnmgr.sh
 sudo ./deploy_vpnmgr.sh
 ```
-In very start script will ask you to enter some variables, that it will use for install.  For lefting default value, just hit enter. But: Check your external IP address. If it doesn't match what your provider gave you, change it to the correct one. Also, if your provider use it's own firewall (like AWS), you should open OpenVPN port in this firewall too (You can see chosen OpenVPN Port in the begining of the script, and you can change it to another). For this instalation you should open UDP port, not TCP.
+В самом начале скрипт попросит вас ввести некоторые переменные, которые он будет использовать для установки. Чтобы оставить значение по умолчанию, просто нажмите Enter. Но: проверьте свой внешний IP-адрес. Если он не соответствует тому, что вам дал ваш провайдер, измените его на правильный. Кроме того, если ваш провайдер использует собственный брандмауэр (например, AWS), вы также должны открыть порт OpenVPN в этом брандмауэре (вы можете увидеть выбранный порт OpenVPN в начале скрипта, кроме того, вы можете изменить его на другой). Для этой сборки вы должны открыть порт UDP, а не TCP.
 
-# How to use vpnmgr 
+# Использование vpnmgr
 ```text
-Usage: vpnmgr command [options]
-   Create and delete OpenVPN client configurations
+Использование: vpnmgr команда [опции]
+   Управление пользовательскими конфигурациями OpenVPN
    
-   Commands:
-       create       Create the client configuration
-       delete       Delete the client configuration
-       help         Show this message
-       status       Show existing configurations and their status
-       update       Update vpnmgr from github repo
-       version      Show the version
+   Команда:
+       create       Создание пользовательской конфигурации
+       delete       Удаление пользовательской конфигурации
+       help         Вывести справку
+       status       Показать иформацию по всем пользовательким конфигурациям
+       update       Обновление утилиты vpmgr
+       version      Показать версию vpnmgr
    
-   Options:
-       vpnmgr (create|delete) name
-           name     Client configuration name
-   
-       vpnmgr status [name]
-           name     Client configuration name (if empty, show a list of configurations)
+   Примеры:
+       vpnmgr (create|delete) name - Создание/удаление пользовательской конфигурации. В качестве опции используется имя
+       vpnmgr status [name] - Показать иформацию по пользовательким конфигурациям. Можно ввести имя конкретной конфин=гурации, и увидеть более подробную информацию о ней.
 ```
 
-For example, to create new user config, execute `sudo vpnmgr create Name`
-> use `sudo` with vpnmgr: `sudo vpnmgr ...`
+Например, чтобы создать пользовательскую конфигурацию, выполните `sudo vpnmgr create Name`
+> Используйте `sudo` с vpnmgr, так как утилите нужны права суперпользователя: `sudo vpnmgr ...`
 
-# How to download user configs
-You can use sftp. For downloading config, named User_config, execute:
+# Как скачивать пользовательские конфигурации
+Для этого вы можете использовать sftp. Для скачивания пользовательской конфигурации с именем User_config, выполните:
 ```
 sftp user@SERVER-IP
 > get /etc/openvpn/vpnmgr/server/client_configs/User_config.ovpn

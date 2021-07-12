@@ -8,6 +8,11 @@ sudo systemctl start firewalld
 sudo yum update
 sudo reboot
 
+# Создание пользователя
+sudo adduser ovpn
+sudo passwd ovpn
+sudo usermod -aG wheel ovpn
+
 # После перезагрузки
 git clone https://github.com/4b4d86b2/vpnmgr.git
 cd vpnmgr

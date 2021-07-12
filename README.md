@@ -2,6 +2,8 @@
 **Для развертывания использовать только операционную систему CentOS 7. С другими дистрибутивами и версиями скрипт несовместим.**
 
 ```bash
+ssh user@IP-ADDRESS
+
 sudo yum install epel-release git firewalld
 sudo systemctl enable firewalld
 sudo systemctl start firewalld
@@ -10,8 +12,12 @@ sudo reboot
 
 # Создание пользователя
 sudo adduser ovpn
-sudo passwd ovpn
+sudo passwd ovpn # придумать и ввести пароль, буквы отобрааться не будут
 sudo usermod -aG wheel ovpn
+
+# Разлогиниться и войти под пользователем ovpn
+
+ssh ovpn@IP-ADDRESS
 
 # После перезагрузки
 git clone https://github.com/4b4d86b2/vpnmgr.git
